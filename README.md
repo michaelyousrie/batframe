@@ -165,7 +165,36 @@ Response::json($data)->status(201)->header('X-Trace', 'abc');
 ```
 
 Helper functions are available too: `view()`, `json()`, `response()`, `redirect()`,
-`abort(404)`, `env()`, `config()`.
+`abort(404)`, `env()`, `config()`, `session()`.
+
+## Sessions
+
+Batframe wraps PHP's native file-based sessions in a small, intuitive helper. The
+session starts lazily the first time you touch it, so no cookie is sent unless you
+actually use it, and there's nothing to configure.
+
+```php
+session()->put('user_id', 42);
+$id = session('user_id');              // 42
+session(['theme' => 'dark', 'lang' => 'en']); // set several at once
+
+session()->has('user_id');             // present and not null
+session()->pull('cart');               // read and remove
+session()->forget('user_id');
+session()->push('items', $item);       // append to an array value
+session()->increment('visits');        // handy counters
+session()->flush();                    // clear everything
+
+// flash data lives for the next request only
+session()->flash('status', 'Saved!');
+$status = session('status');
+
+session()->regenerate();               // new id, e.g. after login
+session()->destroy();                  // end the session
+```
+
+`session()` with no argument returns the `Batframe\Helpers\Session` instance;
+`session('key')` reads a value; `session(['key' => 'value'])` writes.
 
 ## Views (Blade)
 

@@ -77,8 +77,14 @@ If you change routing semantics, `RouteResolver` is the single place to do it, a
   omitted it is guessed as two directories above the subclass file (i.e. the app class is assumed
   to live in `<project>/src/`).
 - **Helpers** (`src/helpers.php`, autoloaded via composer `files`): `env()`, `config()`, `view()`,
-  `json()`, `response()`, `redirect()`, `abort()`. `config()`/`view()` reach the running app via
-  `Batframe::current()`.
+  `json()`, `response()`, `redirect()`, `abort()`, `session()`. `config()`/`view()` reach the
+  running app via `Batframe::current()`.
+- **Sessions** (`src/Helpers/Session.php`, namespace `Batframe\Helpers`): wraps native file
+  sessions, starts lazily, supports flash/increment/push/regenerate/destroy. The `session()`
+  helper: no arg → the shared `Session` instance, `session('k')` reads, `session(['k'=>'v'])`
+  writes. A shared singleton via `Session::instance()`; tests use an array-backed
+  `new Session(false)` and `Session::swap()` to avoid real OS sessions. Pinned by
+  `tests/SessionTest.php`.
 
 ## Conventions in this codebase
 

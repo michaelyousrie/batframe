@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Batframe\Batframe;
+use Batframe\Helpers\Session;
 use Batframe\Http\Response;
 use Batframe\Support\Environment;
 
@@ -76,6 +77,36 @@ if (!function_exists('redirect')) {
     function redirect(string $url, int $status = 302): Response
     {
         return Response::redirect($url, $status);
+    }
+}
+
+if (!function_exists('session')) {
+    /**
+     * Access the session.
+     *
+     * - `session()` returns the {@see Session} instance for chaining
+     *   (`session()->flash('status', 'Saved!')`).
+     * - `session('key')` / `session('key', $default)` reads a value.
+     * - `session(['a' => 1, 'b' => 2])` writes several values and returns the
+     *   instance.
+     *
+     * @param string|array<string, mixed>|null $key
+     */
+    function session(string|array|null $key = null, mixed $default = null): mixed
+    {
+        $session = Session::instance();
+
+        if ($key === null) {
+            return $session;
+        }
+
+        if (is_array($key)) {
+            $session->put($key);
+
+            return $session;
+        }
+
+        return $session->get($key, $default);
     }
 }
 

@@ -6,6 +6,7 @@ namespace Example;
 
 use Batframe\Batframe;
 use Example\Routes\PageRoutes;
+use Example\Routes\SessionRoutes;
 use Example\Routes\UserRoutes;
 
 /**
@@ -18,4 +19,5 @@ class App extends Batframe
 {
     use PageRoutes;
     use UserRoutes;
+    use SessionRoutes;
 }
