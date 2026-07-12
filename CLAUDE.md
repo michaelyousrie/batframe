@@ -77,14 +77,24 @@ If you change routing semantics, `RouteResolver` is the single place to do it, a
   omitted it is guessed as two directories above the subclass file (i.e. the app class is assumed
   to live in `<project>/src/`).
 - **Helpers** (`src/helpers.php`, autoloaded via composer `files`): `env()`, `config()`, `view()`,
-  `json()`, `response()`, `redirect()`, `abort()`, `session()`. `config()`/`view()` reach the
-  running app via `Batframe::current()`.
+  `json()`, `response()`, `redirect()`, `abort()`, `session()`, `cache()`. `config()`/`view()`
+  reach the running app via `Batframe::current()`.
 - **Sessions** (`src/Helpers/Session.php`, namespace `Batframe\Helpers`): wraps native file
   sessions, starts lazily, supports flash/increment/push/regenerate/destroy. The `session()`
   helper: no arg → the shared `Session` instance, `session('k')` reads, `session(['k'=>'v'])`
   writes. A shared singleton via `Session::instance()`; tests use an array-backed
   `new Session(false)` and `Session::swap()` to avoid real OS sessions. Pinned by
   `tests/SessionTest.php`.
+- **Cache** (`src/Helpers/Cache.php`, namespace `Batframe\Helpers`): file-based key/value cache
+  with a per-item ttl (seconds; null = forever, `<= 0` = expired-now). Supports
+  put/get/has/add/forever/remember/rememberForever/pull/increment/flush. Entries are
+  `serialize()`d to `<sha256(key)>.cache` files under the app cache dir
+  (`Batframe::cachePath()` + `/data`, kept separate from BladeOne's compiled views). The `cache()`
+  helper mirrors `session()`: no arg → the shared `Cache`, `cache('k')` reads,
+  `cache(['k'=>'v'], $ttl)` writes with an optional ttl. A shared singleton via
+  `Cache::instance()`; `new Cache()` (no directory) is a request-scoped in-memory store, and the
+  constructor takes an injectable clock so `Cache::swap()` + a fake clock make ttl tests
+  deterministic. Pinned by `tests/CacheTest.php`.
 
 ## Conventions in this codebase
 

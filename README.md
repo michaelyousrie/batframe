@@ -165,7 +165,7 @@ Response::json($data)->status(201)->header('X-Trace', 'abc');
 ```
 
 Helper functions are available too: `view()`, `json()`, `response()`, `redirect()`,
-`abort(404)`, `env()`, `config()`, `session()`.
+`abort(404)`, `env()`, `config()`, `session()`, `cache()`.
 
 ## Sessions
 
@@ -195,6 +195,36 @@ session()->destroy();                  // end the session
 
 `session()` with no argument returns the `Batframe\Helpers\Session` instance;
 `session('key')` reads a value; `session(['key' => 'value'])` writes.
+
+## Cache
+
+Batframe ships a small file-based cache, in the same spirit as the session helper. Every entry
+carries its own time-to-live, so you decide per item whether it is short-lived or sticks around.
+Pass a ttl in seconds, or `null` (the default) to keep it until you forget it.
+
+```php
+cache()->put('report', $data, 3600);   // expires in an hour
+cache()->forever('config', $config);   // never expires
+$data = cache('report');               // read, or null when missing/stale
+$data = cache('report', $fallback);    // read with a default
+
+cache(['a' => 1, 'b' => 2], 600);      // write several at once, ttl in seconds
+cache()->add('lock', 1, 30);           // write only if absent (returns bool)
+cache()->has('report');                // present and not expired
+cache()->pull('report');               // read and remove
+cache()->increment('hits');            // handy counters (ttl preserved)
+cache()->forget('report');
+cache()->flush();                      // clear everything
+
+// compute on miss, then cache for 10 minutes
+$users = cache()->remember('users', 600, fn () => load_users());
+$config = cache()->rememberForever('config', fn () => load_config());
+```
+
+`cache()` with no argument returns the `Batframe\Helpers\Cache` instance; `cache('key')` reads;
+`cache(['key' => 'value'], $ttl)` writes. Entries live as files under the app's cache directory,
+so they survive across requests. Constructing `new Cache()` with no directory gives you a
+request-scoped, in-memory store instead.
 
 ## Views (Blade)
 

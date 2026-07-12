@@ -97,6 +97,14 @@ abstract class Batframe
         return $this->router;
     }
 
+    /**
+     * The resolved cache directory (used by the `cache()` helper as its store).
+     */
+    public function cachePath(): string
+    {
+        return $this->cachePath;
+    }
+
     public function viewEngine(): ViewEngine
     {
         if ($this->viewEngine === null) {

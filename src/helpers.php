@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Batframe\Batframe;
+use Batframe\Helpers\Cache;
 use Batframe\Helpers\Session;
 use Batframe\Http\Response;
 use Batframe\Support\Environment;
@@ -107,6 +108,41 @@ if (!function_exists('session')) {
         }
 
         return $session->get($key, $default);
+    }
+}
+
+if (!function_exists('cache')) {
+    /**
+     * Access the cache.
+     *
+     * - `cache()` returns the {@see Cache} instance for chaining
+     *   (`cache()->put('k', $v, 3600)`).
+     * - `cache('key')` / `cache('key', $default)` reads a value.
+     * - `cache(['key' => 'value'], $ttl)` writes one or more values with an
+     *   optional time-to-live in seconds (null = forever) and returns the
+     *   instance.
+     *
+     * @param string|array<string, mixed>|null $key
+     * @param mixed $default When reading, the fallback value. When writing
+     *                       (array $key), the ttl in seconds (null = forever).
+     */
+    function cache(string|array|null $key = null, mixed $default = null): mixed
+    {
+        $cache = Cache::instance();
+
+        if ($key === null) {
+            return $cache;
+        }
+
+        if (is_array($key)) {
+            foreach ($key as $k => $v) {
+                $cache->put($k, $v, $default);
+            }
+
+            return $cache;
+        }
+
+        return $cache->get($key, $default);
     }
 }
 
