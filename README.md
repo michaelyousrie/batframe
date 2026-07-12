@@ -45,8 +45,20 @@ class App extends Batframe
 
 ## Install
 
+The fastest way to start is the skeleton, which scaffolds a ready-to-run app
+(route traits, Blade views, static pages, a front controller, and `.env`):
+
 ```bash
-composer require batframe/batframe
+composer create-project michaelyousrie/batframe-skeleton my-app
+cd my-app
+composer serve
+```
+
+See [batframe-skeleton](https://github.com/michaelyousrie/batframe-skeleton) for
+details. To add Batframe to an existing project instead:
+
+```bash
+composer require michaelyousrie/batframe
 ```
 
 ## The routing convention
