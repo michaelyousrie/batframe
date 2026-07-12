@@ -94,6 +94,34 @@ Whatever a handler returns is turned into a response:
 | a `string`                         | `text/html`                 |
 | `null`                             | `204 No Content`            |
 
+### Grouping routes into traits
+
+Routes don't have to live directly on your app class. Any verb-prefixed public
+method composed in from a **trait** is registered exactly like an inline method,
+so you can group related endpoints together and keep the app class tiny:
+
+```php
+trait UserRoutes
+{
+    public function getUsers()          { /* GET /users */ }
+    public function getUser(int $id)    { /* GET /user/{id} */ }
+    public function postUsers()         { /* POST /users */ }
+
+    // verbless helper — shared by the routes above, not itself a route
+    protected function formatName(string $name): string { /* ... */ }
+}
+
+class App extends Batframe
+{
+    use UserRoutes;
+    use PageRoutes;
+}
+```
+
+The same convention rules apply inside a trait (verb prefix required, verbless
+methods are helpers). See [`example/src/Routes/`](example/src/Routes/) for a
+working split.
+
 ## Requests
 
 ```php

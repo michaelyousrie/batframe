@@ -29,6 +29,11 @@ final class RouteResolver
         $reflection = new ReflectionClass($controller);
         $routes = [];
 
+        // getMethods() includes methods composed in from traits. A trait
+        // method's declaring class is the class that *uses* the trait, so
+        // routes grouped into traits resolve exactly like methods declared
+        // inline on the controller (and a trait used by Batframe itself stays
+        // excluded, because its methods report Batframe as the declaring class).
         foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
             $route = $this->resolveMethod($method);
 

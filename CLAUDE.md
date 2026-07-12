@@ -58,6 +58,10 @@ Implemented in `RouteResolver::splitVerb()` / `segmentsFromName()` / `bindParame
 - Typed scalar params become `{placeholder}` segments in declared order; `int`/`float` also
   constrain the regex. A `Request`-typed param is injected (any position), not routed.
   `getUser(int $id, string $name)` → `GET /user/{id}/{name}`.
+- **Trait methods are routed too.** `getMethods()` includes trait-composed methods, and a trait
+  method's `getDeclaringClass()` is the *using* class — so routes can be grouped into traits
+  (see `example/src/Routes/`). A trait used by `Batframe` itself would still be excluded because
+  its methods report `Batframe` as the declaring class. Pinned by `tests/TraitRoutesTest.php`.
 
 If you change routing semantics, `RouteResolver` is the single place to do it, and
 `tests/RouteResolverTest.php` pins the expected mappings.
