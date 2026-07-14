@@ -12,6 +12,9 @@ namespace Batframe\Http;
  */
 class Request
 {
+    /** The request currently being handled, for the `request()` helper. */
+    private static ?self $current = null;
+
     /**
      * @param string                       $method  Uppercase HTTP method (GET, POST, ...).
      * @param string                       $path    Request path, always starting with "/".
@@ -110,6 +113,24 @@ class Request
         return $headers;
     }
 
+    /**
+     * The request currently being handled (null outside a request lifecycle).
+     * Bound automatically by the app and read by the `request()` helper.
+     */
+    public static function current(): ?self
+    {
+        return self::$current;
+    }
+
+    /**
+     * Bind (or clear, with null) the request the `request()` helper resolves to.
+     * Called by the app on each request; also handy in tests.
+     */
+    public static function swap(?self $request): void
+    {
+        self::$current = $request;
+    }
+
     public function method(): string
     {
         return $this->method;
@@ -142,19 +163,96 @@ class Request
     }
 
     /**
+     * A single query-string value by key, or every query parameter when called
+     * with no key.
+     *
+     * @return ($key is null ? array<string, mixed> : mixed)
+     */
+    public function query(?string $key = null, mixed $default = null): mixed
+    {
+        if ($key === null) {
+            return $this->query;
+        }
+
+        return $this->query[$key] ?? $default;
+    }
+
+    /**
+     * A single GET value by key, or every GET parameter with no key. GET data is
+     * the query string, so this reads the same source as {@see query()}; it reads
+     * more naturally alongside {@see post()} when a route accepts both.
+     *
+     * @return ($key is null ? array<string, mixed> : mixed)
+     */
+    public function get(?string $key = null, mixed $default = null): mixed
+    {
+        return $this->query($key, $default);
+    }
+
+    /**
+     * The request body, regardless of how it was encoded: a single value by key,
+     * or the whole body with no key. Reads the form body ($_POST) and the JSON
+     * body together, with the JSON body winning on conflict (matching the
+     * precedence of {@see input()} and {@see all()}). Use {@see form()} or
+     * {@see json()} to target one encoding explicitly.
+     *
+     * @return ($key is null ? array<string, mixed> : mixed)
+     */
+    public function post(?string $key = null, mixed $default = null): mixed
+    {
+        $body = array_merge($this->post, $this->json());
+
+        if ($key === null) {
+            return $body;
+        }
+
+        return $body[$key] ?? $default;
+    }
+
+    /**
+     * A single form-body ($_POST) value by key, or the entire form body with no
+     * key. Unlike {@see post()}, this never looks at the JSON body.
+     *
+     * @return ($key is null ? array<string, mixed> : mixed)
+     */
+    public function form(?string $key = null, mixed $default = null): mixed
+    {
+        if ($key === null) {
+            return $this->post;
+        }
+
+        return $this->post[$key] ?? $default;
+    }
+
+    /**
+     * Every GET (query-string) parameter.
+     *
      * @return array<string, mixed>
      */
-    public function query(): array
+    public function allGet(): array
     {
         return $this->query;
     }
 
     /**
+     * Every query-string parameter (alias of {@see allGet()}).
+     *
      * @return array<string, mixed>
      */
-    public function post(): array
+    public function allQuery(): array
     {
-        return $this->post;
+        return $this->query;
+    }
+
+    /**
+     * Every POST-body parameter, form and JSON merged (alias of {@see post()}
+     * with no key). Use {@see form()} for the form body alone.
+     *
+     * @return array<string, mixed>
+     */
+    public function allPost(): array
+    {
+        return $this->post();
     }
 
     /**
@@ -236,6 +334,78 @@ class Request
     public function all(): array
     {
         return array_merge($this->query, $this->post, $this->json());
+    }
+
+    /**
+     * Only the given input keys (skipping any that are absent).
+     *
+     * @return array<string, mixed>
+     */
+    public function only(string ...$keys): array
+    {
+        $all = $this->all();
+
+        return array_intersect_key($all, array_flip($keys));
+    }
+
+    /**
+     * Every input except the given keys.
+     *
+     * @return array<string, mixed>
+     */
+    public function except(string ...$keys): array
+    {
+        return array_diff_key($this->all(), array_flip($keys));
+    }
+
+    /**
+     * True when the input is present and not "empty" (not null and not the empty
+     * string, but 0 and "0" count as filled).
+     */
+    public function filled(string $key): bool
+    {
+        $value = $this->input($key);
+
+        if (is_string($value)) {
+            return $value !== '';
+        }
+
+        return $value !== null;
+    }
+
+    /**
+     * Read an input as a boolean. Truthy values are 1, "1", true, "true", "on",
+     * and "yes"; everything else (including absence) is false.
+     */
+    public function boolean(string $key, bool $default = false): bool
+    {
+        $value = $this->input($key);
+
+        if ($value === null) {
+            return $default;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Read an input cast to an integer, with a fallback when absent.
+     */
+    public function integer(string $key, int $default = 0): int
+    {
+        $value = $this->input($key);
+
+        return $value === null ? $default : (int) $value;
+    }
+
+    /**
+     * Read an input cast to a string, with a fallback when absent.
+     */
+    public function string(string $key, string $default = ''): string
+    {
+        $value = $this->input($key);
+
+        return $value === null ? $default : (string) $value;
     }
 
     /**

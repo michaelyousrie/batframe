@@ -160,6 +160,8 @@ abstract class Batframe
     {
         $this->boot();
 
+        Request::swap($request);
+
         try {
             return $this->dispatch($request);
         } catch (Throwable $exception) {

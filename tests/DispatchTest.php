@@ -51,6 +51,15 @@ class DispatchController extends Batframe
     {
         return 'OK';
     }
+
+    /**
+     * Reads input via the request() helper rather than an injected Request,
+     * proving the helper resolves to the request being handled.
+     */
+    public function getGreeting(): array
+    {
+        return ['hello' => request('name', 'stranger')];
+    }
 }
 
 final class DispatchTest extends TestCase
@@ -104,6 +113,13 @@ final class DispatchTest extends TestCase
 
         $this->assertSame(201, $response->getStatus());
         $this->assertSame('{"created":"grace"}', $response->getBody());
+    }
+
+    public function test_request_helper_resolves_during_dispatch(): void
+    {
+        $response = $this->app()->handle(new Request('GET', '/greeting', query: ['name' => 'ada']));
+
+        $this->assertSame('{"hello":"ada"}', $response->getBody());
     }
 
     public function test_unmatched_int_param_is_404(): void

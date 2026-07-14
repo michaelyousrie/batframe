@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Batframe\Batframe;
 use Batframe\Helpers\Cache;
 use Batframe\Helpers\Session;
+use Batframe\Http\Request;
 use Batframe\Http\Response;
 use Batframe\Support\Environment;
 
@@ -143,6 +144,32 @@ if (!function_exists('cache')) {
         }
 
         return $cache->get($key, $default);
+    }
+}
+
+if (!function_exists('request')) {
+    /**
+     * Access the request currently being handled.
+     *
+     * - `request()` returns the {@see Request} instance for chaining
+     *   (`request()->get('q')`, `request()->post('name')`, `request()->all()`),
+     *   or null when called outside a request lifecycle.
+     * - `request('key')` / `request('key', $default)` fetches a single input,
+     *   looking across the query string and the (form or JSON) body.
+     */
+    function request(?string $key = null, mixed $default = null): mixed
+    {
+        $request = Request::current();
+
+        if ($key === null) {
+            return $request;
+        }
+
+        if ($request === null) {
+            return $default;
+        }
+
+        return $request->input($key, $default);
     }
 }
 

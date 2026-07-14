@@ -138,15 +138,38 @@ working split.
 
 ```php
 $request->input('name', $default); // JSON body, then form body, then query string
-$request->query('q');              // single query param
+$request->get('q');                // single value from the query string (GET data)
+$request->query('q');              // single query param (alias of get())
+$request->post('name');            // single value from the body (form OR JSON)
+$request->form('name');            // form body only (never the JSON body)
+$request->json('name');            // JSON body only (never the form body)
+$request->allGet();                // every GET/query param as an array
+$request->allQuery();              // alias of allGet()
+$request->allPost();               // whole body as an array (form + JSON merged)
+$request->all();                   // everything merged (query + body + JSON)
+$request->only('name', 'email');   // just those inputs
+$request->except('password');      // everything but those
+$request->filled('name');          // present and not empty ("0" counts)
+$request->boolean('active');       // "1"/"true"/"on"/"yes" => true
+$request->integer('page', 1);      // cast with a fallback
+$request->string('q');             // cast with a fallback
 $request->json();                  // decoded JSON body as an array
-$request->all();                   // everything merged
 $request->header('Authorization'); // case-insensitive
 $request->bearerToken();           // Bearer token, or null
 $request->method();                // "GET"
 $request->path();                  // "/users"
 $request->wantsJson();             // content negotiation
 $request->ip();
+```
+
+You don't have to inject the `Request` to reach it. The `request()` helper returns
+the request being handled anywhere in your app:
+
+```php
+request();               // the Batframe\Http\Request instance
+request('name');         // input from the query string or the body
+request('page', 1);      // with a fallback
+request()->only('a', 'b');
 ```
 
 ## Responses
@@ -165,7 +188,7 @@ Response::json($data)->status(201)->header('X-Trace', 'abc');
 ```
 
 Helper functions are available too: `view()`, `json()`, `response()`, `redirect()`,
-`abort(404)`, `env()`, `config()`, `session()`, `cache()`.
+`abort(404)`, `env()`, `config()`, `session()`, `cache()`, `request()`.
 
 ## Sessions
 
