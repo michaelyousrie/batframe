@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Batframe\Http;
 
+use Batframe\Validation\Rule;
+
 /**
  * A lightweight, read-only representation of the incoming HTTP request.
  *
@@ -222,6 +224,25 @@ class Request
         }
 
         return $this->post[$key] ?? $default;
+    }
+
+    /**
+     * Validate a single input by key: it resolves the value the same way the
+     * `request($key)` helper does, then validates that value (not the key)
+     * against the rules. So `request()->validate('name', [Rule::required()])`
+     * is exactly `validate(request('name'), [Rule::required()])`.
+     *
+     * Delegating through the helper (rather than a fixed accessor) means it
+     * always follows whatever default source `request()` resolves from.
+     *
+     * Returns true when every rule passes, or throws a
+     * {@see \Batframe\Validation\ValidationException} (422) on failure.
+     *
+     * @param list<Rule> $rules
+     */
+    public function validate(string $key, array $rules): bool
+    {
+        return validate(request($key), $rules);
     }
 
     /**

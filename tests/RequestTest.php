@@ -5,10 +5,65 @@ declare(strict_types=1);
 namespace Batframe\Tests;
 
 use Batframe\Http\Request;
+use Batframe\Validation\Rule;
+use Batframe\Validation\ValidationException;
 use PHPUnit\Framework\TestCase;
 
 final class RequestTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        Request::swap(null);
+    }
+
+    public function test_validate_reads_the_named_value_and_passes(): void
+    {
+        Request::swap(new Request(
+            method: 'POST',
+            path: '/users',
+            post: ['name' => 'ada'],
+        ));
+
+        $this->assertTrue(request()->validate('name', [Rule::required(), Rule::string()]));
+    }
+
+    public function test_validate_validates_the_value_not_the_key(): void
+    {
+        // The key 'age' would fail integer(); its value '123' passes.
+        Request::swap(new Request(
+            method: 'POST',
+            path: '/users',
+            post: ['age' => '123'],
+        ));
+
+        $this->assertTrue(request()->validate('age', [Rule::integer()]));
+    }
+
+    public function test_validate_throws_when_the_named_value_fails(): void
+    {
+        Request::swap(new Request(method: 'POST', path: '/users', post: []));
+
+        $this->expectException(ValidationException::class);
+
+        // 'name' is absent -> required() fails on the resolved (null) value.
+        request()->validate('name', [Rule::required()]);
+    }
+
+    public function test_validate_resolves_value_like_the_request_helper(): void
+    {
+        // request() resolves across JSON body / form / query, so validate() does too.
+        Request::swap(new Request(
+            method: 'POST',
+            path: '/api/users',
+            query: ['q' => 'search'],
+            headers: ['content-type' => 'application/json'],
+            rawBody: json_encode(['email' => 'a@b.com']) ?: '',
+        ));
+
+        $this->assertTrue(request()->validate('email', [Rule::required(), Rule::email()]));
+        $this->assertTrue(request()->validate('q', [Rule::required(), Rule::string()]));
+    }
+
     public function test_input_reads_across_json_form_and_query(): void
     {
         $request = new Request(

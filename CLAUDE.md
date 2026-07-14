@@ -115,6 +115,10 @@ If you change routing semantics, `RouteResolver` is the single place to do it, a
   `validate((int) $v, [Rule::between(1,5)])`). Failure messages live only on
   `ValidationException::errors()`; `Batframe::renderException()` adds an `errors` key to the JSON
   payload for it. `confirmed`/cross-field rules are out of scope (single value has no siblings).
+  `Request::validate($key, $rules)` (i.e. `request()->validate('name', [...])`) is sugar for
+  `validate(request($key), $rules)`: it resolves the value **through the `request()` helper** — not a
+  fixed accessor, so it tracks whatever `request()` resolves from — and validates that value, not the
+  key. Pinned by `tests/RequestTest.php`.
 
 ## Conventions in this codebase
 

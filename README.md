@@ -268,6 +268,10 @@ validateMany([
     'ada@example.com' => [Rule::required(), Rule::email()],
     'abc123'          => [Rule::alphaNum()],
 ]);
+
+// validate an input by key: it resolves the value like request('name') does,
+// then validates that value. Equivalent to validate(request('name'), [...]).
+request()->validate('name', [Rule::required(), Rule::string()]);
 ```
 
 The available rules: `Rule::required()`, `Rule::nullable()`, `Rule::string()`,
