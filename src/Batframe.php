@@ -11,6 +11,7 @@ use Batframe\Routing\RouteResolver;
 use Batframe\Routing\Router;
 use Batframe\Support\Config;
 use Batframe\Support\Environment;
+use Batframe\Validation\ValidationException;
 use Batframe\View\BladeOneEngine;
 use Batframe\View\ViewEngine;
 use JsonSerializable;
@@ -266,6 +267,10 @@ abstract class Batframe
 
         if ($request->wantsJson()) {
             $payload = ['error' => Response::phrase($status), 'message' => $exception->getMessage()];
+
+            if ($exception instanceof ValidationException) {
+                $payload['errors'] = $exception->errors();
+            }
 
             if ($this->debug && $status >= 500) {
                 $payload['exception'] = $exception::class;

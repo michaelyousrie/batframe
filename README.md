@@ -188,7 +188,8 @@ Response::json($data)->status(201)->header('X-Trace', 'abc');
 ```
 
 Helper functions are available too: `view()`, `json()`, `response()`, `redirect()`,
-`abort(404)`, `env()`, `config()`, `session()`, `cache()`, `request()`.
+`abort(404)`, `env()`, `config()`, `session()`, `cache()`, `request()`, `validate()`,
+`validateMany()`.
 
 ## Sessions
 
@@ -248,6 +249,40 @@ $config = cache()->rememberForever('config', fn () => load_config());
 `cache(['key' => 'value'], $ttl)` writes. Entries live as files under the app's cache directory,
 so they survive across requests. Constructing `new Cache()` with no directory gives you a
 request-scoped, in-memory store instead.
+
+## Validation
+
+Batframe validates a single value against a list of rules. Rules are built from the
+`Rule` class, so the call site stays type-safe with no magic strings. `validate()`
+returns `true` when every rule passes, or throws a `ValidationException` (HTTP 422)
+that Batframe's error pipeline renders for you, with the messages in the JSON body.
+
+```php
+use Batframe\Validation\Rule;
+
+validate($email, [Rule::required(), Rule::email()]);
+validate('123', [Rule::min(2), Rule::max(4)]);      // string length 3 -> passes
+
+// validate many values at once: the key is the value, the value is its rules
+validateMany([
+    'ada@example.com' => [Rule::required(), Rule::email()],
+    'abc123'          => [Rule::alphaNum()],
+]);
+```
+
+The available rules: `Rule::required()`, `Rule::nullable()`, `Rule::string()`,
+`Rule::integer()`, `Rule::boolean()`, `Rule::numeric()`, `Rule::alphaNum()`,
+`Rule::alpha()`, `Rule::email()`, `Rule::url()`, `Rule::min($n)`, `Rule::max($n)`,
+`Rule::between($min, $max)`, `Rule::in([...])`, `Rule::regex($pattern)`.
+
+`nullable` lets a `null` value skip the remaining rules; `required` rejects an empty
+value (`null`, `''`, or `[]`). The size rules (`min`/`max`/`between`) measure a string's
+length, an array's element count, or an int/float's value; a numeric *string* is measured
+by length, so cast it first if you mean to compare the value:
+`validate((int) $qty, [Rule::between(1, 5)])`.
+
+`validate()` with no arguments returns the `Batframe\Validation\Validator` instance,
+whose `passes()` / `fails()` methods do the same checks without throwing.
 
 ## Views (Blade)
 

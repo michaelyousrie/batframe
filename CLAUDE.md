@@ -77,7 +77,8 @@ If you change routing semantics, `RouteResolver` is the single place to do it, a
   omitted it is guessed as two directories above the subclass file (i.e. the app class is assumed
   to live in `<project>/src/`).
 - **Helpers** (`src/helpers.php`, autoloaded via composer `files`): `env()`, `config()`, `view()`,
-  `json()`, `response()`, `redirect()`, `abort()`, `session()`, `cache()`, `request()`.
+  `json()`, `response()`, `redirect()`, `abort()`, `session()`, `cache()`, `request()`,
+  `validate()`, `validateMany()`.
   `config()`/`view()` reach the running app via `Batframe::current()`; `request()` reaches the
   request being handled via `Request::current()` (bound in `Batframe::handle()`, mirroring the
   `Session`/`Cache` swappable-singleton pattern, so `Request::swap()` drives it in tests).
@@ -97,6 +98,23 @@ If you change routing semantics, `RouteResolver` is the single place to do it, a
   `Cache::instance()`; `new Cache()` (no directory) is a request-scoped in-memory store, and the
   constructor takes an injectable clock so `Cache::swap()` + a fake clock make ttl tests
   deterministic. Pinned by `tests/CacheTest.php`.
+- **Validation** (`src/Validation/`, namespace `Batframe\Validation`): single-value validation
+  with a **type-safe, no-magic-strings** call site. `Rule` is a readonly value object built via
+  static factories (`Rule::required/nullable/string/integer/boolean/numeric/alphaNum/alpha/email/
+  url/min/max/between/in/regex`); each carries a predicate closure, a precomputed message, and
+  `isNullable`/`isRequired` flags. `Validator` is a swappable singleton (`instance()`/`swap()`,
+  mirroring `Session`/`Cache`): `validate($v, $rules): true` throws `ValidationException` (422) on
+  failure, `passes()`/`fails()` are the non-throwing predicates. The `validate()` helper: no arg →
+  the `Validator`, `validate($v, $rules)` → true-or-throw. `validateMany([$value => $rules, ...])`
+  runs every entry (does **not** stop at the first failure) and aggregates all failures into one
+  `ValidationException`, keyed by entry — note PHP array-key coercion applies to the values.
+  Evaluation order: `nullable` short-circuits a `null` to valid; then `required` fails on "empty"
+  (`null`/`''`/`[]`); then remaining rules in listed order. **Size rules** (`min`/`max`/`between`)
+  measure by the value's own type — string → char length (`mb_strlen`), array → count, `int`/
+  `float` → numeric value — so a numeric *string* is measured by length (cast to compare value:
+  `validate((int) $v, [Rule::between(1,5)])`). Failure messages live only on
+  `ValidationException::errors()`; `Batframe::renderException()` adds an `errors` key to the JSON
+  payload for it. `confirmed`/cross-field rules are out of scope (single value has no siblings).
 
 ## Conventions in this codebase
 

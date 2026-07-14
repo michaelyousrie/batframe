@@ -8,6 +8,7 @@ use Batframe\Helpers\Session;
 use Batframe\Http\Request;
 use Batframe\Http\Response;
 use Batframe\Support\Environment;
+use Batframe\Validation\Validator;
 
 if (!function_exists('env')) {
     /**
@@ -170,6 +171,45 @@ if (!function_exists('request')) {
         }
 
         return $request->input($key, $default);
+    }
+}
+
+if (!function_exists('validate')) {
+    /**
+     * Validate a single value against a list of {@see \Batframe\Validation\Rule}s.
+     *
+     * - `validate()` returns the shared {@see Validator} instance.
+     * - `validate($value, $rules)` returns true when every rule passes, or
+     *   throws a {@see \Batframe\Validation\ValidationException} (422) carrying
+     *   the failure messages.
+     *
+     * @param list<\Batframe\Validation\Rule>|null $rules
+     * @return Validator|bool
+     */
+    function validate(mixed $value = null, ?array $rules = null): mixed
+    {
+        $validator = Validator::instance();
+
+        if ($rules === null) {
+            return $validator;
+        }
+
+        return $validator->validate($value, $rules);
+    }
+}
+
+if (!function_exists('validateMany')) {
+    /**
+     * Validate several values at once. Keys are the values being validated,
+     * values are their rule lists. Returns true when all pass, or throws a
+     * {@see \Batframe\Validation\ValidationException} (422) aggregating every
+     * failure, keyed by entry.
+     *
+     * @param array<int|string, list<\Batframe\Validation\Rule>> $groups
+     */
+    function validateMany(array $groups): bool
+    {
+        return Validator::instance()->validateMany($groups);
     }
 }
 
