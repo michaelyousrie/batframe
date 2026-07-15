@@ -2,9 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## The contract
+
+@src/AI/CLAUDE.md
+
+That file describes how the framework *behaves*: the naming convention, what a handler may
+return, the pages fallback, the helpers, validation semantics. It ships inside the Composer
+package, and applications built on Batframe import the very same file out of their `vendor/`,
+so their AI guidance always matches the version they installed.
+
+**It is the framework's public contract. If you change how the framework behaves, changing that
+file is part of the change, not follow-up work.** Everything below is about developing the
+framework itself and stays here, because it is not true in a consuming project.
+
+(`/CLAUDE.md` is `export-ignore`d in `.gitattributes` so this file stays out of the dist
+tarball. `src/AI/CLAUDE.md` is not ignored, which is what puts it in `vendor/`. Check
+`git check-attr export-ignore -- <path>` before moving either.)
+
 ## What this is
 
-Batframe is a Composer library (`batframe/batframe`, namespace `Batframe\`, PHP 8.1+): a
+Batframe is a Composer library (`michaelyousrie/batframe`, namespace `Batframe\`, PHP 8.1+): a
 Flask-like microframework where a developer extends the `Batframe` base class and each public
 method becomes an HTTP endpoint whose route is **inferred from the method name**. There is no
 route table or config to author.
@@ -45,26 +62,33 @@ is enough to work anywhere in it.
 `run()` = `handle()` + `send()`. `handle(Request): Response` returns without emitting, which is
 how tests drive the app (see `tests/DispatchTest.php`).
 
-## The naming convention (the one thing to internalize)
+## How the naming convention is implemented
 
-Implemented in `RouteResolver::splitVerb()` / `segmentsFromName()` / `bindParameter()`:
+The convention itself is in the contract, imported above. What follows is how it is built, which
+is only interesting from inside this repo.
 
-- A method is only a route if it **starts with an HTTP verb** (`get/post/put/patch/delete/head/
-  options`) or is exactly `index` (→ `GET /`). Verbless public methods are treated as internal
-  helpers and are **not** routed — the example's `formatName()` is called by `postUsers()` this
-  way. Methods declared on `Batframe` itself are excluded via `getDeclaringClass()`.
-- Remaining PascalCase words become lowercased, `/`-separated path segments. **No
-  auto-pluralization** — the path is literal (`getUser` → `/user`, `getUsers` → `/users`).
-- Typed scalar params become `{placeholder}` segments in declared order; `int`/`float` also
-  constrain the regex. A `Request`-typed param is injected (any position), not routed.
-  `getUser(int $id, string $name)` → `GET /user/{id}/{name}`.
-- **Trait methods are routed too.** `getMethods()` includes trait-composed methods, and a trait
-  method's `getDeclaringClass()` is the *using* class — so routes can be grouped into traits
-  (see `example/src/Routes/`). A trait used by `Batframe` itself would still be excluded because
-  its methods report `Batframe` as the declaring class. Pinned by `tests/TraitRoutesTest.php`.
+`RouteResolver::splitVerb()` / `segmentsFromName()` / `bindParameter()` do the work:
 
-If you change routing semantics, `RouteResolver` is the single place to do it, and
-`tests/RouteResolverTest.php` pins the expected mappings.
+- Methods declared on `Batframe` itself are excluded via `getDeclaringClass()`, which is what
+  keeps the framework's own public API (`boot()`, `handle()`, `run()`, `config()`, `router()`,
+  `cachePath()`, `viewEngine()`) from becoming endpoints. Verbless public methods are simply
+  never matched by `splitVerb()`; the example's `formatName()` is called by `postUsers()` that
+  way.
+- `getMethods()` includes trait-composed methods, and a trait method's `getDeclaringClass()` is
+  the *using* class, so trait routes resolve exactly like inline ones (see `example/src/Routes/`).
+  A trait used by `Batframe` itself would still be excluded, because its methods report
+  `Batframe` as the declaring class. Pinned by `tests/TraitRoutesTest.php`.
+- Constraints come from the PHP type: `int` gives `\d+`, `float` gives `\d+(?:\.\d+)?`, anything
+  else `[^/]+`. Path params are appended after the name-derived segments, never interleaved.
+- `Route` is a readonly value object exposing public `$verb`, `$path` (human-readable, with
+  `{placeholders}`), `$regex`, `$handler` and `$parameters`. `RouteResolver::resolve()` is public
+  and accepts a class-string, so consumers can enumerate the table without booting an app. The
+  skeleton's `batbelt routes` relies on exactly that, so treat those five properties and
+  `resolve()`'s signature as public API.
+
+If you change routing semantics, `RouteResolver` is the single place to do it,
+`tests/RouteResolverTest.php` pins the expected mappings, and `src/AI/CLAUDE.md` is where the
+new behaviour gets described.
 
 ## Extension seams
 
