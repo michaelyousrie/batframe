@@ -97,12 +97,17 @@ new behaviour gets described.
   BladeOne is configured with **both** the `views/` and `pages/` directories as roots, so static
   pages can `@extends` layouts that live under `views/`.
 - **Config/paths**: the constructor takes an array (`base_path`, `views`, `pages`, `cache`,
-  `debug`, `view_engine`). Relative paths resolve against `base_path`. When `base_path` is
-  omitted it is guessed as two directories above the subclass file (i.e. the app class is assumed
-  to live in `<project>/src/`).
+  `debug`, `view_engine`, `database`, `database_path`). Relative paths resolve against
+  `base_path`. When `base_path` is omitted it is guessed as two directories above the subclass
+  file (i.e. the app class is assumed to live in `<project>/src/`).
 - **Helpers** (`src/helpers.php`, autoloaded via composer `files`): `env()`, `config()`, `view()`,
-  `json()`, `response()`, `redirect()`, `abort()`, `session()`, `cache()`, `request()`,
+  `json()`, `response()`, `redirect()`, `abort()`, `session()`, `cache()`, `db()`, `request()`,
   `validate()`, `validateMany()`.
+  Note this file is in the **global** namespace but imports `Batframe\Batframe` as the alias
+  `Batframe`, so a relative class name like `Batframe\Http\HttpException` inside a helper
+  resolves through that alias to `Batframe\Batframe\Http\...` and fatals. `abort()` shipped
+  broken for exactly that reason. Import classes and use the short name; pinned by
+  `tests/AbortHelperTest.php`.
   `config()`/`view()` reach the running app via `Batframe::current()`; `request()` reaches the
   request being handled via `Request::current()` (bound in `Batframe::handle()`, mirroring the
   `Session`/`Cache` swappable-singleton pattern, so `Request::swap()` drives it in tests).
@@ -143,6 +148,46 @@ new behaviour gets described.
   `validate(request($key), $rules)`: it resolves the value **through the `request()` helper** — not a
   fixed accessor, so it tracks whatever `request()` resolves from — and validates that value, not the
   key. Pinned by `tests/RequestTest.php`.
+- **Data storage** (`src/DataStorage/`, namespace `Batframe\DataStorage`): schemaless collections
+  behind a swappable driver. `Store` is the interface and **the swap point**; `JsonStore`
+  (`Json/`, the default) and `SqliteStore` (`Sqlite/`) implement it. `Collection` is a thin facade
+  currying the collection name (`db('users')` → `new Collection($store, 'users')`) and holds zero
+  driver-specific code. `Database` is the `instance()`/`swap()` registry (mirroring
+  `Session`/`Cache`/`Validator`), needed because an interface cannot hold statics; it resolves
+  lazily via `Batframe::current()?->store()` with a temp-dir `JsonStore` fallback, exactly as
+  `Cache::defaultDirectory()` does — so **`boot()` is untouched** and `db()` works with no app.
+  Driver selection: `database` config (a `Store` instance, or `'json'`/`'sqlite'`) → `DB_DRIVER`
+  env → `json`; `database_path` config → `DB_PATH` env → `storage/database` (a directory) or
+  `storage/database.sqlite` (a file), and `':memory:'` bypasses `resolvePath()`.
+  **The extension axis is the driver, not the operator.** `Is` is a driver-agnostic readonly value
+  object (name + operands + predicate) and **must never learn a dialect**; the predicate is the
+  *canonical* definition of an operator, and every driver has to reproduce it. SQL lives in a
+  `CriteriaCompiler` the driver owns (`SqliteCompiler`), so adding MySQL means a new store + a new
+  compiler and zero edits elsewhere. `AbstractStore` holds only what is contract, not dialect: id
+  rules, timestamps, name validation, bare-value→`Is::equals` normalisation.
+  **Parity is where this layer goes wrong, and always the same way: SQL disagrees with PHP about
+  types and about null, silently, on a path no test happened to cover.** Every one of these was a
+  real bug found by review after the suite was green, so treat the list as load-bearing:
+  three-valued logic (`NULL > 18` is NULL, not false) means **every fragment must COALESCE to 0/1**
+  or a missing field poisons the AND/OR/NOT it meets; **PDO binds everything as a string** unless
+  given a type (`execute([...])` is banned in the driver) which turns the integer id `1` into
+  `'1'`; **PDO has no float type at all**, so a float operand needs `CAST(? AS REAL)` from the
+  compiler or every float query silently matches nothing; **`json_extract` flattens types** —
+  a stored `true` comes back as `1`, so strict equality needs a `json_type` guard, and a stored
+  array comes back as its JSON *text*, so `LIKE` needs one too; **`json_extract` parses its path**,
+  so a field named `a.b` needs the path segment quoted; **`IN` answers NULL for a NULL operand**,
+  so nulls are lifted into their own `IS NULL` term; and **ordering must be pinned by the contract**
+  (nothing < numbers < text, text by character) because PHP's `<=>` agrees with none of it —
+  it reads `'10' < '9'` as false and calls `null` larger than `-5`.
+  On the JSON side the equivalent trap is destruction ordering: **encode before truncating**, or a
+  single bad-UTF-8 value erases the collection.
+  Pinned by `tests/StoreContractTestCase.php` — one suite runs against **both** drivers
+  (`JsonStoreTest`, `SqliteStoreTest`), which is the only thing making "swappable" a fact rather
+  than a claim; a new driver extends it and inherits the contract. When you find a parity bug, the
+  fix belongs there first — **if it is only in a driver's own test, it is not a contract, and the
+  next driver will get it wrong again.** `tests/SqliteCompilerTest.php` additionally drives every
+  operator through a real `SqliteStore` (never a hand-rolled PDO connection — binding is half of
+  what makes a fragment mean anything) and asserts each agrees with `Is::matches()`.
 
 ## Conventions in this codebase
 
@@ -151,3 +196,7 @@ new behaviour gets described.
 - Deferred v1 scope (documented in the plan, intentionally absent): middleware pipeline, CLI
   scaffolding, PSR-7 bridge, `#[Route]` attribute layer, DI container. `RouteResolver` is kept as
   a clean seam so an attribute layer can be added without touching dispatch.
+- Deferred on data storage: relations/joins, migrations, an explicit transaction API (`JsonStore`
+  could not honour it, and an interface method one driver fakes is worse than no method),
+  aggregates beyond `count()`, an active-record `Model` layer, and nested field paths in criteria.
+  `Store` + `CriteriaCompiler` are kept clean so a driver can be added without touching any of it.

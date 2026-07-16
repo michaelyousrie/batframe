@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Batframe;
 
+use Batframe\DataStorage\DataStorageException;
+use Batframe\DataStorage\Json\JsonStore;
+use Batframe\DataStorage\Sqlite\SqliteStore;
+use Batframe\DataStorage\Store;
 use Batframe\Http\HttpException;
 use Batframe\Http\Request;
 use Batframe\Http\Response;
@@ -48,6 +52,12 @@ abstract class Batframe
 
     protected string $cachePath;
 
+    protected ?Store $store = null;
+
+    protected string $databaseDriver;
+
+    protected ?string $databasePath;
+
     protected bool $debug;
 
     /** The currently running application, for the config()/view() helpers. */
@@ -57,7 +67,8 @@ abstract class Batframe
 
     /**
      * @param array<string, mixed> $config Optional overrides:
-     *        base_path, views, pages, cache, debug, view_engine.
+     *        base_path, views, pages, cache, debug, view_engine, database,
+     *        database_path.
      */
     public function __construct(array $config = [])
     {
@@ -76,6 +87,20 @@ abstract class Batframe
         if (isset($config['view_engine']) && $config['view_engine'] instanceof ViewEngine) {
             $this->viewEngine = $config['view_engine'];
         }
+
+        // `database` is either a driver name or a Store to use as-is, the same
+        // way `view_engine` takes an engine. Both fall back to the environment,
+        // so an app can run on JSON locally and SQLite in production without a
+        // line of code changing.
+        if (isset($config['database']) && $config['database'] instanceof Store) {
+            $this->store = $config['database'];
+        }
+
+        $this->databaseDriver = strtolower((string) (
+            is_string($config['database'] ?? null) ? $config['database'] : Environment::get('DB_DRIVER', 'json')
+        ));
+
+        $this->databasePath = $config['database_path'] ?? Environment::get('DB_PATH', null);
 
         $this->router = new Router();
     }
@@ -104,6 +129,45 @@ abstract class Batframe
     public function cachePath(): string
     {
         return $this->cachePath;
+    }
+
+    /**
+     * The resolved database location: a directory of JSON files for the json
+     * driver, a single file for sqlite. Relative paths resolve against the base
+     * path, as everywhere else.
+     */
+    public function databasePath(): string
+    {
+        $default = $this->databaseDriver === 'sqlite' ? 'storage/database.sqlite' : 'storage/database';
+        $path = $this->databasePath ?? $default;
+
+        // ':memory:' is SQLite's own name for "no file at all", so it is passed
+        // through rather than resolved into a path that would never be used.
+        if ($path === ':memory:') {
+            return $path;
+        }
+
+        return $this->resolvePath($path);
+    }
+
+    /**
+     * The app's store (used by the `db()` helper). Built on first use from the
+     * configured driver, unless a Store was handed in as config.
+     */
+    public function store(): Store
+    {
+        if ($this->store === null) {
+            $this->store = match ($this->databaseDriver) {
+                'json' => new JsonStore($this->databasePath()),
+                'sqlite' => new SqliteStore($this->databasePath()),
+                default => throw new DataStorageException(
+                    "'{$this->databaseDriver}' is not a database driver Batframe knows: use 'json' or 'sqlite', "
+                    . 'or pass a Store as the `database` config.',
+                ),
+            };
+        }
+
+        return $this->store;
     }
 
     public function viewEngine(): ViewEngine

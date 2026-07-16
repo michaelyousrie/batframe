@@ -3,5 +3,7 @@ composer.lock
 .env
 example/storage/cache/*
 !example/storage/cache/.gitkeep
+example/storage/database/
+example/storage/database.sqlite*
 .phpunit.result.cache
 .phpunit.cache/

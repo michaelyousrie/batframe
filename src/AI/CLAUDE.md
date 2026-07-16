@@ -121,6 +121,103 @@ Three sharp edges:
 `confirmed` and other cross-field rules are deliberately out of scope: a single value has no
 siblings.
 
+## Data storage
+
+Data goes in **collections**, and a collection is **schemaless: there is nothing to declare, no
+migration to run, and no model class to write.** A record is an array. If you go looking for a
+schema file, re-read this line.
+
+```php
+db('users')->insert(['name' => 'Michael']);
+// ['id' => 1, 'name' => 'Michael',
+//  'created_at' => '2026-07-16T10:00:00+00:00', 'updated_at' => '2026-07-16T10:00:00+00:00']
+
+db('users')->get(1);                             // by id, or null
+db('users')->all();                              // everything, in insertion order
+db('users')->find(['name' => 'Michael']);        // a list of matching records
+db('users')->findOne(['name' => 'Michael']);     // the first match, or null
+db('users')->update(1, ['name' => 'Mike']);      // merges; returns the record, or null
+db('users')->delete(1);                          // bool
+db('users')->count(['role' => 'admin']);
+db('users')->exists(['role' => 'admin']);
+```
+
+Which driver answers is configuration, never code: `DB_DRIVER=json` (the default, one readable
+file per collection under `storage/database/`) or `DB_DRIVER=sqlite`. Both behave identically —
+that is enforced by one shared test suite, not merely intended — so **swapping is an `.env`
+change and nothing else.** Reach for `sqlite` when you want real transactions and concurrent
+writers; stay on `json` when you want to open the file and read it.
+
+### Filtering
+
+A bare value means equality. Anything richer is an `Is`, built from a factory, so there are no
+magic-string operators here either:
+
+```php
+use Batframe\DataStorage\Is;
+
+db('users')->find([
+    'name' => 'Michael',                 // equality; same as Is::equals('Michael')
+    'age'  => Is::greaterThan(18),
+    'role' => Is::in(['admin', 'owner']),
+    'bio'  => Is::contains('php'),       // also startsWith / endsWith
+]);
+
+db('users')->find(['name' => 'Michael'], or: ['name' => 'F0rty']);   // either one
+db('users')->findNot(['name' => 'Michael']);                         // everyone else
+
+db('users')->find(
+    ['age' => Is::greaterThan(18)],
+    orderBy: 'name', desc: true, limit: 10, offset: 20,
+);
+```
+
+`Is::` factories: `equals`, `notEquals`, `not`, `greaterThan`, `greaterOrEqual`, `lessThan`,
+`lessOrEqual`, `between`, `in`, `notIn`, `contains`, `startsWith`, `endsWith`, `like`, `null`,
+`notNull`. `Is::not()` takes a value or another criterion, so `Is::not(Is::contains('php'))`
+composes.
+
+**Searching text: reach for `contains`, `startsWith` or `endsWith`.** They are case-insensitive
+and have no pattern syntax, so a `%` or `_` in what you are looking for is just a character
+(`Is::contains('50%')` finds "50% off" and not "50 off"). `Is::like()` is there for when you
+genuinely want a pattern — and it is SQL LIKE, so **a pattern with no wildcard is an exact
+match**: `Is::like('testing')` does *not* find "testingName", it finds "testing". That is
+`Is::like('testing%')`, or better, `Is::startsWith('testing')`.
+
+`updateWhere()` and `deleteWhere()` take the same criteria and return how many records they
+touched.
+
+### Sharp edges
+
+- **A missing field is null, and null never satisfies an ordering comparison.** A record with no
+  `age` is not caught by `Is::lessThan(100)` — it is unknown, not small. It *is* caught by
+  `Is::null()` and by `Is::not(Is::greaterThan(18))`.
+- **`or:` is one level.** The matcher is `(all of $where) OR (all of $or)`. There is no nesting;
+  if you need it, you have outgrown this layer.
+- **`findNot()` negates the whole matcher**, `or:` included: `findNot($a, or: $b)` is neither.
+- **Comparisons are strict.** `Is::equals(18)` does not match `'18'` or `18.0`, `Is::equals(1)`
+  does not match `true`, and the id `1` is a different record from the id `'1'`.
+- **Criteria compare scalars.** A record may hold arrays and objects, but comparing a whole
+  structure is refused — `find(['tags' => ['a', 'b']])` throws. Compare a field, not a shape.
+  Criteria address top-level fields, and a `.` in a field name is part of the name.
+- **Anything you supply wins.** Pass your own `id`, `created_at` or `updated_at` and it is kept
+  verbatim. A duplicate id is refused.
+- **Ids are `max(id) + 1`,** counting only integer ids, and nothing is persisted — so deleting
+  the last record frees its id for reuse. Supply your own ids if they must never repeat.
+- **`update()` merges and cannot move a record.** An `id` in `$values` is ignored.
+- **`Is::like()` anchors; the text criteria do not.** `like('testing')` matches only "testing".
+  Use `contains`/`startsWith`/`endsWith` unless you actually want wildcards.
+- **Ordering is: nothing, then numbers, then text.** A missing field sorts first ascending and
+  last descending; a boolean sorts among the numbers as 1 or 0; text sorts by character, so `'10'`
+  comes before `'9'`. Ties keep insertion order.
+- **Text criteria read a boolean as `'1'`/`'0'`** and a number as its digits, so
+  `Is::contains('1')` finds a record whose flag is `true`.
+- The JSON driver **rewrites the whole file on every write** and filters in PHP. That is fine for
+  a small collection and a few writers, and it is why `sqlite` exists.
+
+Relations, joins, migrations, an explicit transaction API and an active-record `Model` layer are
+out of scope.
+
 ## Helpers
 
 Globally available, no imports:
@@ -134,12 +231,13 @@ abort(404, 'Not found.')                 // throws; returns never
 request('key') / request()               // current Request
 session('key') / session(['k' => 'v'])
 cache('key') / cache(['k' => 'v'], 60)   // ttl in seconds, null = forever
+db('users') / db()                       // a collection / the whole store
 config('debug') / env('APP_ENV')
 validate($v, [...]) / validateMany([...])
 ```
 
-`session()` and `cache()` with no argument return the shared instance, which carries the fuller
-API (`remember`, `flash`, `increment`, `pull`, and so on).
+`session()`, `cache()` and `db()` with no argument return the shared instance, which carries the
+fuller API (`remember`, `flash`, `increment`, `pull`, `collections`, and so on).
 
 ## Conventions
 
@@ -154,3 +252,9 @@ API (`remember`, `flash`, `increment`, `pull`, and so on).
 Middleware, a DI container, a PSR-7 bridge, `#[Route]` attributes and CLI scaffolding are all
 out of scope by choice, not by omission. Do not reach for them or hand-roll a substitute
 without being asked.
+
+The same goes for everything an ORM would add on top of data storage: relations and joins,
+migrations and schemas, an explicit transaction API, and an active-record `Model` base class.
+Collections are schemaless and stay that way. If a query needs more than
+[Data storage](#data-storage) offers, that is a signal you have outgrown this layer, not an
+invitation to hand-roll one.

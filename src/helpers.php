@@ -3,8 +3,12 @@
 declare(strict_types=1);
 
 use Batframe\Batframe;
+use Batframe\DataStorage\Collection;
+use Batframe\DataStorage\Database;
+use Batframe\DataStorage\Store;
 use Batframe\Helpers\Cache;
 use Batframe\Helpers\Session;
+use Batframe\Http\HttpException;
 use Batframe\Http\Request;
 use Batframe\Http\Response;
 use Batframe\Support\Environment;
@@ -148,6 +152,30 @@ if (!function_exists('cache')) {
     }
 }
 
+if (!function_exists('db')) {
+    /**
+     * Access stored data.
+     *
+     * - `db('users')` returns that {@see Collection}, which is where the day to
+     *   day work happens: `db('users')->insert([...])`,
+     *   `db('users')->find(['name' => 'Michael'])`.
+     * - `db()` returns the {@see Store} itself, which carries the same API with
+     *   the collection name spelled out (`db()->collections()`).
+     *
+     * Which driver answers is a matter of configuration, not of this call.
+     */
+    function db(?string $collection = null): Store|Collection
+    {
+        $store = Database::instance();
+
+        if ($collection === null) {
+            return $store;
+        }
+
+        return new Collection($store, $collection);
+    }
+}
+
 if (!function_exists('request')) {
     /**
      * Access the request currently being handled.
@@ -219,6 +247,10 @@ if (!function_exists('abort')) {
      */
     function abort(int $status, string $message = ''): never
     {
-        throw new Batframe\Http\HttpException($status, $message);
+        // Imported and named short on purpose: this file imports the class
+        // `Batframe\Batframe` under the alias `Batframe`, so writing the
+        // relative name `Batframe\Http\HttpException` here resolves through
+        // that alias to `Batframe\Batframe\Http\HttpException` and blows up.
+        throw new HttpException($status, $message);
     }
 }
