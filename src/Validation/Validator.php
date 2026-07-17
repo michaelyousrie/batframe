@@ -131,7 +131,11 @@ class Validator
                 continue;
             }
 
-            if (!$rule->passes($value)) {
+            if ($rule->passes($value)) {
+                // A passing type rule narrows the value (e.g. numeric string -> int)
+                // so the rules that follow measure the value, not its text form.
+                $value = $rule->coerce($value);
+            } else {
                 $errors[] = $rule->message;
             }
         }

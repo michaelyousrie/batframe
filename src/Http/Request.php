@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Batframe\Http;
 
 use Batframe\Validation\Rule;
+use Batframe\Validation\ValidationException;
 
 /**
  * A lightweight, read-only representation of the incoming HTTP request.
@@ -236,13 +237,20 @@ class Request
      * always follows whatever default source `request()` resolves from.
      *
      * Returns true when every rule passes, or throws a
-     * {@see \Batframe\Validation\ValidationException} (422) on failure.
+     * {@see \Batframe\Validation\ValidationException} (422) on failure. Because
+     * the field name is known here, the failure messages are keyed by it, so the
+     * rendered `errors` payload is `{"<key>": ["...", ...]}` — telling the client
+     * which input was rejected.
      *
      * @param list<Rule> $rules
      */
     public function validate(string $key, array $rules): bool
     {
-        return validate(request($key), $rules);
+        try {
+            return validate(request($key), $rules);
+        } catch (ValidationException $e) {
+            throw new ValidationException([$key => $e->errors()]);
+        }
     }
 
     /**

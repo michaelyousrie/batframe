@@ -12,8 +12,9 @@ use Batframe\Http\HttpException;
  * The individual failure messages are available via {@see errors()} and are
  * surfaced in the JSON body by `Batframe::renderException()`.
  *
- * For a single value the errors are a flat list of messages; for
- * `validateMany()` they are keyed by the entry that failed.
+ * For a single bare value the errors are a flat list of messages;
+ * `request()->validate($key, ...)` keys them by the field name, and
+ * `validateMany()` keys them by the entry that failed.
  */
 final class ValidationException extends HttpException
 {

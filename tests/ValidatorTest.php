@@ -110,6 +110,40 @@ final class ValidatorTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Type-rule coercion for downstream rules
+    // ------------------------------------------------------------------
+
+    public function test_integer_rule_coerces_numeric_string_for_later_size_rules(): void
+    {
+        // The reported bug: "6" arrives as a string, integer() passes, and min(3)
+        // must compare the value 6, not the string length 1.
+        $this->assertTrue($this->validator->passes('6', [Rule::integer(), Rule::min(3)]));
+        $this->assertFalse($this->validator->passes('2', [Rule::integer(), Rule::min(3)]));
+        $this->assertFalse($this->validator->passes('6', [Rule::integer(), Rule::max(3)]));
+        $this->assertTrue($this->validator->passes('4', [Rule::integer(), Rule::between(3, 5)]));
+    }
+
+    public function test_numeric_rule_coerces_numeric_string_for_later_size_rules(): void
+    {
+        $this->assertTrue($this->validator->passes('6.5', [Rule::numeric(), Rule::min(3)]));
+        $this->assertTrue($this->validator->passes('2.5', [Rule::numeric(), Rule::max(3)]));
+        $this->assertFalse($this->validator->passes('9', [Rule::numeric(), Rule::between(1, 5)]));
+    }
+
+    public function test_size_rule_without_a_type_rule_still_measures_length(): void
+    {
+        // The documented sharp edge is unchanged when no type rule precedes it.
+        $this->assertTrue($this->validator->passes('12345', [Rule::between(1, 5)]));
+        $this->assertFalse($this->validator->passes('6', [Rule::min(3)]));
+    }
+
+    public function test_coercion_is_order_dependent(): void
+    {
+        // A size rule placed before the type rule still sees the raw string.
+        $this->assertFalse($this->validator->passes('6', [Rule::min(3), Rule::integer()]));
+    }
+
+    // ------------------------------------------------------------------
     // Membership / pattern
     // ------------------------------------------------------------------
 

@@ -20,7 +20,11 @@ use Closure;
 final class Rule
 {
     /**
-     * @param Closure(mixed): bool $predicate
+     * @param Closure(mixed): bool  $predicate
+     * @param Closure(mixed): mixed $coercion  Applied to the value after this rule
+     *        passes, so the rules that follow see the coerced form. A type rule
+     *        (integer/numeric) narrows a numeric string to its numeric value, so
+     *        a later size rule measures the value rather than the string length.
      */
     private function __construct(
         public readonly string $name,
@@ -28,6 +32,7 @@ final class Rule
         public readonly string $message,
         public readonly bool $isNullable = false,
         public readonly bool $isRequired = false,
+        public readonly ?Closure $coercion = null,
     ) {
     }
 
@@ -37,6 +42,16 @@ final class Rule
     public function passes(mixed $value): bool
     {
         return ($this->predicate)($value);
+    }
+
+    /**
+     * The value as it should be seen by the rules that follow this one. For most
+     * rules this is the value untouched; a type rule narrows it (see $coercion).
+     * Only meaningful once {@see passes()} has returned true for this value.
+     */
+    public function coerce(mixed $value): mixed
+    {
+        return $this->coercion === null ? $value : ($this->coercion)($value);
     }
 
     // ------------------------------------------------------------------
@@ -83,6 +98,7 @@ final class Rule
             static fn (mixed $v): bool => is_int($v)
                 || (is_string($v) && filter_var($v, FILTER_VALIDATE_INT) !== false),
             'This value must be an integer.',
+            coercion: static fn (mixed $v): mixed => is_string($v) ? (int) $v : $v,
         );
     }
 
@@ -101,6 +117,8 @@ final class Rule
             'numeric',
             static fn (mixed $v): bool => is_numeric($v),
             'This value must be numeric.',
+            // + 0 yields an int for an integer string and a float otherwise.
+            coercion: static fn (mixed $v): mixed => is_string($v) ? $v + 0 : $v,
         );
     }
 

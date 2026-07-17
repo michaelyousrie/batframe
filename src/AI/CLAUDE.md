@@ -107,14 +107,33 @@ Rules: `required`, `nullable`, `string`, `integer`, `boolean`, `numeric`, `alpha
 A failure throws `ValidationException`, which is rendered as a 422 with an `errors` key. Do not
 catch it just to re-throw an error response; that is already the behaviour.
 
+The **shape of `errors` depends on which entry point you used**, because only some of them know a
+field name. `request()->validate('score', ...)` keys the messages by the field, and
+`validateMany()` keys them by the entry, so the client is told which input was rejected:
+
+```json
+{ "error": "Unprocessable Entity", "message": "The given data was invalid.",
+  "errors": { "score": ["This value must be numeric."] } }
+```
+
+A bare `validate($value, ...)` has no field name, so its `errors` is a flat list of messages.
+
 Three sharp edges:
 
 - **Size rules measure by the value's own type.** A string is measured by character length, an
-  array by count, an `int`/`float` by numeric value. So a numeric *string* is measured by its
-  length: `'12345'` passes `Rule::between(1, 5)` because it is five characters. Cast first when
-  you mean the value: `validate((int) $v, [Rule::between(1, 5)])`.
+  array by count, an `int`/`float` by numeric value. So a bare numeric *string* is measured by
+  its length: `'12345'` passes `Rule::between(1, 5)` because it is five characters. **But a
+  passing type rule narrows the value for the rules after it**, so `Rule::integer()` (or
+  `Rule::numeric()`) before a size rule makes that size rule measure the number: `'6'` passes
+  `[Rule::integer(), Rule::min(3)]` because `integer()` turns it into `6` and `min(3)` then sees
+  `6`, not the length `1`. This is what you want with HTTP input, which always arrives as a
+  string. It is order-sensitive (put the type rule first) and it also changes what later rules
+  like `in` compare against, since the value is now an `int`. Reach for an explicit cast only
+  when you are measuring a value with no type rule in front of it:
+  `validate((int) $v, [Rule::between(1, 5)])`.
 - Evaluation order: `nullable` short-circuits a `null` to valid, then `required` fails on
-  "empty" (`null`, `''` or `[]`), then the remaining rules in the order you listed them.
+  "empty" (`null`, `''` or `[]`), then the remaining rules in the order you listed them. A type
+  rule that passes coerces the value the remaining rules see (previous point).
 - `validateMany()` keys by the *value*, so PHP's array-key coercion applies. Failure messages
   live only on `ValidationException::errors()`.
 

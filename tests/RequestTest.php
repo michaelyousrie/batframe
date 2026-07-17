@@ -49,6 +49,21 @@ final class RequestTest extends TestCase
         request()->validate('name', [Rule::required()]);
     }
 
+    public function test_validate_keys_its_errors_by_the_param_name(): void
+    {
+        Request::swap(new Request(method: 'GET', path: '/user', query: ['score' => 'tes']));
+
+        try {
+            request()->validate('score', [Rule::required(), Rule::numeric()]);
+            $this->fail('Expected ValidationException');
+        } catch (ValidationException $e) {
+            $this->assertSame(
+                ['score' => ['This value must be numeric.']],
+                $e->errors(),
+            );
+        }
+    }
+
     public function test_validate_resolves_value_like_the_request_helper(): void
     {
         // request() resolves across JSON body / form / query, so validate() does too.
