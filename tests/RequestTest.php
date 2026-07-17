@@ -79,6 +79,58 @@ final class RequestTest extends TestCase
         $this->assertTrue(request()->validate('q', [Rule::required(), Rule::string()]));
     }
 
+    public function test_validate_many_reads_each_named_value_and_passes(): void
+    {
+        Request::swap(new Request(
+            method: 'POST',
+            path: '/users',
+            post: ['name' => 'ada', 'age' => '30'],
+        ));
+
+        $this->assertTrue(request()->validateMany([
+            'name' => [Rule::required(), Rule::string()],
+            'age'  => [Rule::integer(), Rule::between(18, 99)],
+        ]));
+    }
+
+    public function test_validate_many_runs_every_entry_and_keys_errors_by_field(): void
+    {
+        Request::swap(new Request(
+            method: 'GET',
+            path: '/user',
+            query: ['name' => '', 'score' => 'tes'],
+        ));
+
+        try {
+            request()->validateMany([
+                'name'  => [Rule::required()],
+                'score' => [Rule::required(), Rule::numeric()],
+            ]);
+            $this->fail('Expected ValidationException');
+        } catch (ValidationException $e) {
+            // Both fields are reported (it does not stop at the first failure),
+            // each keyed by the field name.
+            $this->assertSame(['name', 'score'], array_keys($e->errors()));
+            $this->assertSame(['This value must be numeric.'], $e->errors()['score']);
+        }
+    }
+
+    public function test_validate_many_resolves_values_like_the_request_helper(): void
+    {
+        Request::swap(new Request(
+            method: 'POST',
+            path: '/api/users',
+            query: ['q' => 'search'],
+            headers: ['content-type' => 'application/json'],
+            rawBody: json_encode(['email' => 'a@b.com']) ?: '',
+        ));
+
+        $this->assertTrue(request()->validateMany([
+            'email' => [Rule::required(), Rule::email()],
+            'q'     => [Rule::required(), Rule::string()],
+        ]));
+    }
+
     public function test_input_reads_across_json_form_and_query(): void
     {
         $request = new Request(

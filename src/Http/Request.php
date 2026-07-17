@@ -254,6 +254,38 @@ class Request
     }
 
     /**
+     * Validate several inputs at once. Unlike the global `validateMany()`, whose
+     * keys are the values being validated, here the keys are field names: each is
+     * resolved through the `request($field)` helper (exactly as {@see validate()}
+     * resolves a single field) and validated against its rule list.
+     *
+     * Runs every entry — it does not stop at the first failure — and aggregates
+     * all failures into one {@see \Batframe\Validation\ValidationException} (422),
+     * keyed by field name, so the rendered `errors` payload tells the client which
+     * inputs were rejected: `{"<field>": ["...", ...], ...}`.
+     *
+     * @param array<string, list<Rule>> $groups Field name => its rules.
+     */
+    public function validateMany(array $groups): bool
+    {
+        $errors = [];
+
+        foreach ($groups as $key => $rules) {
+            try {
+                validate(request((string) $key), $rules);
+            } catch (ValidationException $e) {
+                $errors[$key] = $e->errors();
+            }
+        }
+
+        if ($errors !== []) {
+            throw new ValidationException($errors);
+        }
+
+        return true;
+    }
+
+    /**
      * Every GET (query-string) parameter.
      *
      * @return array<string, mixed>
