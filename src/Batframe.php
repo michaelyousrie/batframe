@@ -345,42 +345,137 @@ abstract class Batframe
             return Response::json($payload, $status)->withHeaders($headers);
         }
 
+        // Never leak the raw message of a non-HttpException in production; only
+        // an HttpException carries a message meant for the client.
+        $message = $exception instanceof HttpException && $exception->getMessage() !== ''
+            ? $exception->getMessage()
+            : Response::phrase($status);
+
         $html = $this->debug && $status >= 500
             ? $this->debugErrorPage($exception, $status)
-            : $this->genericErrorPage($status, $exception);
+            : $this->errorPage($status, $message);
 
         return Response::html($html, $status)->withHeaders($headers);
     }
 
-    private function genericErrorPage(int $status, Throwable $exception): string
+    /**
+     * The HTML error page for a status. An app overrides the built-in page by
+     * convention: a view named `errors/{status}` (say `errors/404`) answers
+     * that status, and `errors/error` catches anything without its own file —
+     * discovered by filename, exactly like the pages directory. A view that is
+     * missing, or that throws while rendering, falls through to the built-in
+     * page, so a broken error template can never loop or take the error path
+     * down with it.
+     */
+    private function errorPage(int $status, string $message): string
     {
-        $title = $status . ' ' . Response::phrase($status);
-        $message = $exception instanceof HttpException && $exception->getMessage() !== ''
-            ? htmlspecialchars($exception->getMessage(), ENT_QUOTES)
-            : htmlspecialchars(Response::phrase($status), ENT_QUOTES);
+        foreach (["errors/{$status}", 'errors/error'] as $view) {
+            if (!$this->viewEngine()->exists($view)) {
+                continue;
+            }
 
-        return "<!doctype html><html><head><meta charset=\"utf-8\"><title>{$title}</title>"
-            . '<style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;margin:0;'
-            . 'align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0}'
-            . '.b{text-align:center}.b h1{font-size:4rem;margin:0}.b p{color:#94a3b8}</style></head>'
-            . "<body><div class=\"b\"><h1>{$status}</h1><p>{$message}</p></div></body></html>";
+            try {
+                return $this->viewEngine()->render($view, ['status' => $status, 'message' => $message]);
+            } catch (Throwable) {
+                break;
+            }
+        }
+
+        return $this->genericErrorPage($status, $message);
     }
 
+    /**
+     * The built-in production error page: the status code as the hero, the
+     * message beneath. Self-contained on purpose (system fonts, inline CSS, no
+     * network requests), so it renders even when everything else is broken.
+     */
+    private function genericErrorPage(int $status, string $message): string
+    {
+        $title = htmlspecialchars($status . ' ' . Response::phrase($status), ENT_QUOTES);
+        $message = htmlspecialchars($message, ENT_QUOTES);
+
+        return <<<HTML
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{$title}</title>
+<style>
+:root{--ink:#0A0B0F;--line:#23262F;--mist:#9AA0AC;--chalk:#ECEEF2;--signal:#6E5BFF;--brass:#F2B33D;
+--mono:ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--ink);color:var(--chalk);font-family:var(--sans);display:flex;align-items:center;
+justify-content:center;padding:2rem;background-image:radial-gradient(52rem 34rem at 50% -22%,rgba(110,91,255,.15),transparent 60%)}
+.box{text-align:center;max-width:32rem}
+.code{font-family:var(--mono);font-weight:600;font-size:clamp(5rem,22vw,9rem);line-height:.95;letter-spacing:-.045em;color:var(--signal);margin:0}
+.phrase{font-size:1.3rem;font-weight:600;letter-spacing:-.01em;margin:1rem 0 0}
+.rule{width:2.2rem;height:2px;background:var(--brass);border:0;margin:1.5rem auto 0;opacity:.85}
+.mark{margin-top:2.25rem;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mist)}
+.mark b{color:var(--brass);font-weight:600}
+</style></head>
+<body><div class="box"><p class="code">{$status}</p><p class="phrase">{$message}</p>
+<hr class="rule"><p class="mark">powered by <b>batframe</b></p></div></body></html>
+HTML;
+    }
+
+    /**
+     * The built-in debug error page (debug mode, 5xx): a developer tool showing
+     * the exception, where it was thrown, and the stack trace. Also
+     * self-contained. Never shown to end users, since it exposes internals.
+     */
     private function debugErrorPage(Throwable $exception, int $status): string
     {
-        $type = htmlspecialchars($exception::class, ENT_QUOTES);
+        $fqcn = $exception::class;
+        $slash = strrpos($fqcn, '\\');
+        $namespace = $slash !== false ? htmlspecialchars(substr($fqcn, 0, $slash + 1), ENT_QUOTES) : '';
+        $short = htmlspecialchars($slash !== false ? substr($fqcn, $slash + 1) : $fqcn, ENT_QUOTES);
+        $title = htmlspecialchars($status . ' ' . $fqcn, ENT_QUOTES);
         $message = htmlspecialchars($exception->getMessage(), ENT_QUOTES);
-        $location = htmlspecialchars($exception->getFile() . ':' . $exception->getLine(), ENT_QUOTES);
-        $trace = htmlspecialchars($exception->getTraceAsString(), ENT_QUOTES);
+        $messageHtml = $message !== '' ? "<p class=\"message\">{$message}</p>" : '';
+        $file = htmlspecialchars($exception->getFile(), ENT_QUOTES);
+        $line = (int) $exception->getLine();
 
-        return "<!doctype html><html><head><meta charset=\"utf-8\"><title>{$status} {$type}</title>"
-            . '<style>body{font-family:system-ui,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}'
-            . '.h{background:#7f1d1d;padding:1.5rem 2rem}.h h1{margin:0;font-size:1.25rem}'
-            . '.h p{margin:.5rem 0 0;color:#fecaca}.m{padding:1.5rem 2rem}'
-            . 'pre{background:#1e293b;padding:1rem;border-radius:8px;overflow:auto;font-size:.85rem}'
-            . '.loc{color:#94a3b8}</style></head>'
-            . "<body><div class=\"h\"><h1>{$type}</h1><p>{$message}</p></div>"
-            . "<div class=\"m\"><p class=\"loc\">{$location}</p><pre>{$trace}</pre></div></body></html>";
+        // The trace is already HTML-escaped; wrapping the leading frame index of
+        // each line only inserts spans around safe "#\d+" text.
+        $trace = preg_replace(
+            '/^(#\d+)/m',
+            '<span class="idx">$1</span>',
+            htmlspecialchars($exception->getTraceAsString(), ENT_QUOTES),
+        );
+
+        return <<<HTML
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{$title}</title>
+<style>
+:root{--ink:#0A0B0F;--panel-2:#0F1116;--line:#23262F;--mist:#9AA0AC;--chalk:#ECEEF2;--signal:#6E5BFF;--brass:#F2B33D;--danger:#F26D6D;
+--mono:ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--ink);color:var(--chalk);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:60rem;margin:0 auto;padding:3rem 1.5rem 4rem}
+.tag{display:inline-flex;align-items:center;gap:.5rem;font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--danger);margin:0 0 1.1rem}
+.tag .n{color:var(--ink);background:var(--danger);border-radius:.3rem;padding:.1rem .45rem;font-weight:600}
+.type{font-family:var(--mono);font-size:clamp(1.5rem,4vw,2.15rem);font-weight:600;letter-spacing:-.02em;margin:0;color:var(--chalk);word-break:break-word}
+.type .ns{color:var(--mist)}
+.message{font-size:1.15rem;color:var(--chalk);margin:.9rem 0 0;max-width:60ch}
+.loc{display:inline-flex;align-items:center;gap:.55rem;margin:1.4rem 0 0;font-family:var(--mono);font-size:.85rem;color:var(--mist);border:1px solid var(--line);border-radius:.5rem;padding:.5rem .8rem}
+.loc b{color:var(--brass);font-weight:600}
+.trace-h{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mist);margin:2.6rem 0 .8rem}
+.trace{background:var(--panel-2);border:1px solid var(--line);border-radius:.7rem;padding:1rem 1.15rem;overflow-x:auto;margin:0}
+.trace pre{margin:0;font-family:var(--mono);font-size:.82rem;line-height:1.85;color:#C9CDD6;white-space:pre}
+.trace .idx{color:var(--signal)}
+.foot{margin-top:2.4rem;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mist)}
+.foot b{color:var(--brass);font-weight:600}
+.foot .d{color:var(--line);margin:0 .5rem}
+</style></head>
+<body><div class="wrap">
+<p class="tag"><span class="n">{$status}</span> Unhandled exception</p>
+<h1 class="type"><span class="ns">{$namespace}</span>{$short}</h1>
+{$messageHtml}
+<span class="loc">at <b>{$file}</b>:{$line}</span>
+<p class="trace-h">Stack trace</p>
+<div class="trace"><pre>{$trace}</pre></div>
+<p class="foot"><b>batframe</b><span class="d">&middot;</span>debug mode<span class="d">&middot;</span>set APP_DEBUG=false to hide this</p>
+</div></body></html>
+HTML;
     }
 
     // ------------------------------------------------------------------

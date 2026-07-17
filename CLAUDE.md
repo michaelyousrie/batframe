@@ -58,6 +58,12 @@ is enough to work anywhere in it.
 5. **Errors**: `handle()` wraps dispatch in a try/catch. `HttpException` carries a status code and
    headers; anything else is a 500. `renderException()` does content negotiation
    (`Request::wantsJson()`) and, when `debug` is on, includes the exception class/file/trace.
+   For HTML errors it calls `errorPage()`, which resolves an app's own view by convention
+   (`errors/{status}` then `errors/error`, via `ViewEngine::exists()`) and otherwise returns the
+   self-contained built-in `genericErrorPage()`; a debug 5xx bypasses this for `debugErrorPage()`,
+   and a convention view that throws while rendering falls back to the built-in page (no recursion).
+   The convention is the contract's, so `src/AI/CLAUDE.md` describes it; the two built-in pages are
+   inline heredocs with system-font CSS on purpose, so an error renders with no external request.
 
 `run()` = `handle()` + `send()`. `handle(Request): Response` returns without emitting, which is
 how tests drive the app (see `tests/DispatchTest.php`).
@@ -147,7 +153,10 @@ new behaviour gets described.
   `Request::validate($key, $rules)` (i.e. `request()->validate('name', [...])`) is sugar for
   `validate(request($key), $rules)`: it resolves the value **through the `request()` helper** — not a
   fixed accessor, so it tracks whatever `request()` resolves from — and validates that value, not the
-  key. Pinned by `tests/RequestTest.php`.
+  key. `Request::validateMany([$field => $rules, ...])` is the multi-field form: unlike the global
+  `validateMany()`, which keys by the *value*, this keys by **field name**, resolves each through
+  `request($field)`, runs every entry (no short-circuit) and aggregates failures keyed by field.
+  Pinned by `tests/RequestTest.php`.
 - **Data storage** (`src/DataStorage/`, namespace `Batframe\DataStorage`): schemaless collections
   behind a swappable driver. `Store` is the interface and **the swap point**; `JsonStore`
   (`Json/`, the default) and `SqliteStore` (`Sqlite/`) implement it. `Collection` is a thin facade

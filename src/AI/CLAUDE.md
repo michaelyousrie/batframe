@@ -57,6 +57,29 @@ file and trace. `abort(404, '...')` throws one for you; its return type is `neve
 
 A path that matches under a different verb is a **405** with an `Allow` header, not a 404.
 
+### Custom error pages
+
+The HTML error page is overridden **by convention, with nothing to register** — the same way
+static pages work. Batframe looks for a view named `errors/{status}` (say `errors/404` or
+`errors/500`), then a catch-all `errors/error`, and renders the first that exists; when neither
+does, it falls back to a built-in page. So an app styles its own errors by dropping
+`views/errors/404.blade.php` (or `errors/error.blade.php` for all of them) and doing nothing
+else.
+
+The view is handed `$status` and `$message` (the status phrase, or an `HttpException`'s message).
+A non-`HttpException` never leaks its message to the client: production shows the plain status
+phrase.
+
+Two sharp edges:
+
+- **In debug mode a 5xx still shows the built-in stack-trace page**, not your error view, so you
+  keep the trace while developing. Error views answer the production 5xx and every non-5xx status
+  (404, 403, 405, 422, ...) as usual. This is the one case where a convention view is bypassed.
+- **A broken error view can't take the error path down with it.** If `errors/{status}` throws
+  while rendering, Batframe falls back to the built-in page rather than looping.
+
+JSON error responses are unaffected — `wantsJson()` requests never render an error view.
+
 ## Static pages
 
 Any file in the pages directory is served automatically, with no handler. `about.blade.php`
@@ -99,6 +122,10 @@ validateMany([                                                  // runs all, agg
     $email => [Rule::required(), Rule::email()],
     $age   => [Rule::integer(), Rule::between(18, 99)],
 ]);
+request()->validateMany([                                       // same, but keyed by field name
+    'email' => [Rule::required(), Rule::email()],               // each value read via request()
+    'age'   => [Rule::integer(), Rule::between(18, 99)],
+]);
 ```
 
 Rules: `required`, `nullable`, `string`, `integer`, `boolean`, `numeric`, `alphaNum`, `alpha`,
@@ -108,8 +135,9 @@ A failure throws `ValidationException`, which is rendered as a 422 with an `erro
 catch it just to re-throw an error response; that is already the behaviour.
 
 The **shape of `errors` depends on which entry point you used**, because only some of them know a
-field name. `request()->validate('score', ...)` keys the messages by the field, and
-`validateMany()` keys them by the entry, so the client is told which input was rejected:
+field name. `request()->validate('score', ...)` keys the messages by the field, and both
+`validateMany()` and `request()->validateMany([...])` key them by the entry (for the request
+variant that entry *is* the field name), so the client is told which input was rejected:
 
 ```json
 { "error": "Unprocessable Entity", "message": "The given data was invalid.",
